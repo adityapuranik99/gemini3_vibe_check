@@ -8,14 +8,14 @@ export class VibeCheckAPI {
   // Dynamic base URL - computed on each request
   private get baseUrl(): string {
     if (typeof window !== "undefined") {
-      // In browser: use same hostname as frontend, port 8000
-      return `http://${window.location.hostname}:8000`;
+      // In browser: use same hostname as frontend, port 8002
+      return `http://${window.location.hostname}:8002`;
     }
     // Server-side fallback
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8002";
   }
 
-  constructor() {}
+  constructor() { }
 
   /**
    * Get all detected moments
@@ -140,7 +140,7 @@ export const api = new VibeCheckAPI();
 // Helper to get clip URL with correct host
 export const getFullClipUrl = (clipPath: string): string => {
   if (typeof window !== "undefined") {
-    return `http://${window.location.hostname}:8000${clipPath}`;
+    return `http://${window.location.hostname}:8002${clipPath}`;
   }
-  return `http://localhost:8000${clipPath}`;
+  return `http://localhost:8002${clipPath}`;
 };
