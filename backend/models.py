@@ -60,7 +60,9 @@ class MomentAnalysis(BaseModel):
     post_copy: PostCopy
     clip_url: str | None = None
     share_card_url: str | None = None
-    approval_status: Literal["pending", "approved", "held"] = "pending"
+    approval_status: Literal["pending", "sent_to_exec", "approved", "held"] = "pending"
+    source: Literal["upload", "livekit_screenshare"] = "upload"  # NEW: Source of the moment
+    session_id: str | None = None  # NEW: LiveKit session ID if from screen share
 
 
 class ApprovalEvent(BaseModel):

@@ -7,12 +7,14 @@ Combines ingestion → detection → Gemini analysis.
 import logging
 from typing import Optional
 import asyncio
+import os
 from pathlib import Path
 
 from ingest import VideoIngester, RingBuffer
 from detection import FeatureExtractor, CandidateDetector
 from gemini_analyzer import GeminiAnalyzer
 from clips import ClipAssembler
+from share_card_generator import ShareCardGenerator
 from models import CandidateEvent, MomentAnalysis
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,7 @@ class VideoPipeline:
         )
         self.gemini_analyzer = GeminiAnalyzer(api_key=gemini_api_key)
         self.clip_assembler = ClipAssembler(output_dir=clips_output_dir)
+        self.share_card_generator = ShareCardGenerator()
         self.ring_buffer = RingBuffer(duration_seconds=70.0, fps=30.0)
 
         logger.info("🎬 Video pipeline initialized")
@@ -109,6 +112,22 @@ class VideoPipeline:
                         clip_path = await self._generate_clip(moment, ingester.video_path)
                         if clip_path:
                             moment.clip_url = f"/api/clips/{Path(clip_path).name}"
+
+                        # Generate share card (Static only - animation disabled for performance)
+                        try:
+                            # Save a keyframe from the ring buffer for the card
+                            keyframe_path = await self._save_keyframe(moment)
+
+                            # Generate static card
+                            card_path = await self.share_card_generator.generate_static_card(
+                                moment,
+                                theme_name="stadium", # Default theme
+                                keyframe_path=keyframe_path
+                            )
+                            if card_path:
+                                moment.share_card_url = f"/api/share_cards/images/{Path(card_path).name}"
+                        except Exception as e:
+                            logger.warning(f"⚠️ Share card generation failed: {e}")
 
                         moments.append(moment)
 
@@ -215,6 +234,34 @@ class VideoPipeline:
 
         except Exception as e:
             logger.error(f"❌ Clip generation failed for {moment.moment_id}: {e}")
+            return None
+
+    async def _save_keyframe(self, moment: MomentAnalysis) -> Optional[str]:
+        """Save a keyframe image from the ring buffer for the share card."""
+        try:
+            # Pick frame at t0
+            frames = self.ring_buffer.get_frames_in_window(moment.t0 - 0.1, moment.t0 + 0.1)
+            if not frames:
+                return None
+            
+            # Use the middle frame in the window
+            _, frame = frames[len(frames) // 2]
+            
+            # Convert to PIL and save
+            from PIL import Image
+            import numpy as np
+            
+            # BGR to RGB
+            frame_rgb = frame[:, :, ::-1]
+            img = Image.fromarray(frame_rgb)
+            
+            output_path = f"./storage/share_cards/keyframes/{moment.moment_id}_keyframe.png"
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            img.save(output_path)
+            
+            return output_path
+        except Exception as e:
+            logger.warning(f"Could not save keyframe: {e}")
             return None
 
 

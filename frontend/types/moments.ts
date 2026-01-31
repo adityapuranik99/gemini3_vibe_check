@@ -38,7 +38,9 @@ export interface MomentAnalysis {
   };
   clip_url?: string; // URL to the generated clip
   share_card_url?: string; // URL to the share card image
-  approval_status?: "pending" | "approved" | "held";
+  approval_status?: "pending" | "sent_to_exec" | "approved" | "held";
+  source?: "upload" | "livekit_screenshare"; // Source of the moment
+  session_id?: string; // LiveKit session ID if from screen share
 }
 
 export interface ApprovalEvent {
