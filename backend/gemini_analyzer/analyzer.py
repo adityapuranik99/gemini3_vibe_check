@@ -48,7 +48,7 @@ class GeminiAnalyzer:
             "temperature": 0.7,
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 2048,
+            "max_output_tokens": 32000,  # Gemini 3 Flash supports up to 65536
             "response_mime_type": "application/json",
         }
 
@@ -176,6 +176,47 @@ class GeminiAnalyzer:
 
         return Image.fromarray(frame_rgb)
 
+    def _repair_truncated_json(self, json_str: str) -> str:
+        """Attempt to repair truncated JSON by closing open brackets/braces."""
+        # Count open brackets
+        open_braces = json_str.count('{') - json_str.count('}')
+        open_brackets = json_str.count('[') - json_str.count(']')
+
+        # Remove trailing incomplete content (after last complete value)
+        # Look for patterns like incomplete strings or trailing commas
+        import re
+
+        # Remove trailing incomplete string (unclosed quote)
+        if json_str.count('"') % 2 != 0:
+            # Find last complete key-value or array element
+            last_complete = max(
+                json_str.rfind('",'),
+                json_str.rfind('"},'),
+                json_str.rfind('],'),
+                json_str.rfind('},'),
+                json_str.rfind(': "'),
+            )
+            if last_complete > 0:
+                # Try to find a good truncation point
+                for end_pattern in ['",', '"},', '],', '},', '}', ']']:
+                    pos = json_str.rfind(end_pattern)
+                    if pos > 0:
+                        json_str = json_str[:pos + len(end_pattern)]
+                        break
+
+        # Remove trailing comma if present
+        json_str = re.sub(r',\s*$', '', json_str.strip())
+
+        # Recount after cleanup
+        open_braces = json_str.count('{') - json_str.count('}')
+        open_brackets = json_str.count('[') - json_str.count(']')
+
+        # Close open brackets and braces
+        json_str += ']' * open_brackets
+        json_str += '}' * open_braces
+
+        return json_str
+
     def _parse_response(
         self,
         response_text: str,
@@ -187,33 +228,63 @@ class GeminiAnalyzer:
         import json
         import re
 
+        # Clean response text - remove comments and trailing commas
+        cleaned_text = response_text
+        cleaned_text = re.sub(r'//.*?\n|/\*.*?\*/', '', cleaned_text, flags=re.DOTALL)  # Remove comments
+        cleaned_text = re.sub(r',(\s*[}\]])', r'\1', cleaned_text)  # Remove trailing commas
+
+        data = None
+
+        # Try 1: Parse JSON directly
         try:
-            # Try to parse JSON directly
-            data = json.loads(response_text)
+            data = json.loads(cleaned_text)
         except json.JSONDecodeError as e:
             logger.warning(f"JSON parse error: {e}. Attempting cleanup...")
 
-            # Try to extract JSON from markdown code blocks
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        # Try 2: Extract from markdown code blocks
+        if data is None:
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', cleaned_text, re.DOTALL)
             if json_match:
                 try:
-                    data = json.loads(json_match.group(1))
+                    extracted = json_match.group(1)
+                    extracted = re.sub(r',(\s*[}\]])', r'\1', extracted)
+                    data = json.loads(extracted)
                     logger.info("Successfully extracted JSON from code block")
-                except:
-                    logger.error("Failed to parse JSON even from code block")
-                    raise
-            else:
-                # Try to find any JSON object in the response
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    try:
-                        data = json.loads(json_match.group(0))
-                        logger.info("Successfully extracted JSON object")
-                    except:
-                        logger.error("Failed to parse extracted JSON")
-                        raise
-                else:
-                    raise
+                except Exception:
+                    pass
+
+        # Try 3: Find JSON object in response
+        if data is None:
+            json_match = re.search(r'\{.*', cleaned_text, re.DOTALL)
+            if json_match:
+                try:
+                    extracted = json_match.group(0)
+                    extracted = re.sub(r',(\s*[}\]])', r'\1', extracted)
+                    data = json.loads(extracted)
+                    logger.info("Successfully extracted JSON object")
+                except Exception:
+                    pass
+
+        # Try 4: Repair truncated JSON
+        if data is None:
+            json_match = re.search(r'\{.*', cleaned_text, re.DOTALL)
+            if json_match:
+                try:
+                    extracted = json_match.group(0)
+                    repaired = self._repair_truncated_json(extracted)
+                    repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
+                    data = json.loads(repaired)
+                    logger.info("Successfully repaired and parsed truncated JSON")
+                except Exception as ex:
+                    logger.error(f"Failed to repair JSON: {ex}")
+                    logger.error(f"Original: {extracted[:500]}...")
+                    logger.error(f"Repaired attempt: {repaired[:500]}...")
+
+        # If all parsing attempts failed, raise exception to trigger fallback
+        if data is None:
+            logger.error(f"All JSON parsing attempts failed")
+            logger.error(f"Response text: {response_text[:500]}...")
+            raise ValueError("Could not parse Gemini response as JSON")
 
         # Generate moment ID
         moment_id = f"m_{candidate_id.split('_')[1]}"

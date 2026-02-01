@@ -1,6 +1,6 @@
 """Prompt templates for Gemini moment analysis."""
 
-MOMENT_ANALYSIS_PROMPT = """You are analyzing a sports moment from a live broadcast. Your job is to understand what happened, assess its significance, and package it for social media posting.
+MOMENT_ANALYSIS_PROMPT = """You are a world-class sports social media copywriter analyzing a moment from a live broadcast. Your job is to understand what happened, assess its significance, and write ELECTRIC social media copy that gets engagement.
 
 CRITICAL: You MUST respond with valid JSON matching EXACTLY this schema. Do NOT deviate from the field names or values.
 
@@ -21,9 +21,9 @@ CRITICAL: You MUST respond with valid JSON matching EXACTLY this schema. Do NOT 
     {"label": "reaction_button", "start_s": <float>, "end_s": <float>}
   ],
   "post_copy": {
-    "hype": "<energetic copy under 200 chars with emojis>",
-    "neutral": "<factual copy>",
-    "brand_safe": "<cautious copy>"
+    "hype": "<MAX ENERGY! All caps moments, fire emojis, exclamation marks. Make fans FEEL IT. Under 200 chars>",
+    "neutral": "<Still engaging but conversational. Use storytelling, 'Did you see that?' energy. Ask questions. Make people want to watch. Under 200 chars>",
+    "brand_safe": "<Professional but NOT boring. Highlight the athleticism, the skill, the drama. Avoid generic phrases like 'Great play'. Under 200 chars>"
   }
 }
 ```
@@ -43,6 +43,26 @@ CRITICAL: You MUST respond with valid JSON matching EXACTLY this schema. Do NOT 
 **Scoring Guidelines:**
 - Hype: 90+ = viral-worthy; 70-89 = very exciting; 50-69 = notable; <50 = routine
 - Risk: 70+ = high controversy/injury; 40-69 = moderate caution; <40 = safe to post
+
+**POST COPY GUIDELINES - THIS IS CRITICAL:**
+Write copy like a top sports social media manager, not a boring news anchor.
+
+HYPE variant:
+- ALL CAPS for emphasis, strategic emoji use 🔥💥
+- Short punchy sentences. Build excitement.
+- Make fans feel like they're watching it live
+
+NEUTRAL variant:
+- Still exciting but more conversational
+- Use rhetorical questions: "Did you see that?", "How does he do it?"
+- Paint a picture with words - help people visualize the play
+- Can include 1-2 emojis tastefully
+
+BRAND_SAFE variant:
+- Professional but NEVER boring
+- Focus on athleticism, skill, and drama
+- Avoid generic phrases like "Great play", "Nice shot", "Good effort"
+- Be specific about what made this moment special
 
 Be decisive and confident. This is time-sensitive content.
 """
@@ -120,8 +140,8 @@ def get_example_moment_json() -> dict:
             }
         ],
         "post_copy": {
-            "hype": "🔥 WILSON TO METCALF FOR THE TD! 45 YARDS OF PURE MAGIC! #GameTied",
-            "neutral": "Wilson connects with Metcalf for a 45-yard touchdown. Game tied with 2:00 remaining.",
-            "brand_safe": "What a throw by Wilson! Metcalf hauls it in for the score. We're tied up!"
+            "hype": "🔥 WILSON TO METCALF! 45 YARDS OF ABSOLUTE FILTH! THE STADIUM JUST EXPLODED! 💥🏈 #Seahawks",
+            "neutral": "Did you just see that throw?! Wilson under pressure, rolls right, finds Metcalf streaking down the sideline. 45 yards. Game. Tied. 🎯",
+            "brand_safe": "Russell Wilson threads the needle to DK Metcalf for a spectacular 45-yard touchdown. The kind of clutch play that defines championship quarterbacks."
         }
     }
