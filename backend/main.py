@@ -25,6 +25,7 @@ STORAGE_PATHS = {
     "videos": os.getenv("VIDEO_STORAGE_PATH", "./storage/videos"),
     "clips": os.getenv("CLIPS_OUTPUT_PATH", "./storage/clips"),
     "segments": os.getenv("SEGMENTS_PATH", "./storage/segments"),
+    "share_cards": "./storage/share_cards",
 }
 
 # Create storage directories
@@ -137,6 +138,59 @@ async def approve_moment(approval: ApprovalEvent):
     return {"status": "ok", "approval": approval, "moment": moment}
 
 
+@app.post("/api/moments/{moment_id}/send_to_exec")
+async def send_to_exec(moment_id: str):
+    """Producer sends a moment to exec for approval."""
+    if moment_id not in moments_store:
+        raise HTTPException(status_code=404, detail="Moment not found")
+
+    moment = moments_store[moment_id]
+    moment.approval_status = "sent_to_exec"
+    print(f"📤 Moment sent to exec: {moment_id}")
+
+    return {"status": "ok", "moment": moment}
+
+
+@app.post("/api/moments/{moment_id}/regenerate_share_card")
+async def regenerate_share_card(moment_id: str, theme_name: str = "stadium"):
+    """Regenerate a share card for a moment with a specific theme."""
+    if moment_id not in moments_store:
+        raise HTTPException(status_code=404, detail="Moment not found")
+    
+    moment = moments_store[moment_id]
+    
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline not initialized")
+    
+    try:
+        # Re-save keyframe if needed
+        keyframe_path = await pipeline._save_keyframe(moment)
+        
+        # Generate new static card
+        card_path = await pipeline.share_card_generator.generate_static_card(
+            moment, 
+            theme_name=theme_name,
+            keyframe_path=keyframe_path
+        )
+        
+        if card_path:
+            moment.share_card_url = f"/api/share_cards/images/{os.path.basename(card_path)}"
+            
+            # Re-start animation
+            import asyncio
+            asyncio.create_task(
+                pipeline.share_card_generator.generate_animated_loop(
+                    moment, 
+                    card_path,
+                    theme_name=theme_name
+                )
+            )
+        
+        return {"status": "ok", "moment": moment}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")
+
+
 @app.post("/api/upload")
 async def upload_video(video: UploadFile = File(...)):
     """
@@ -239,7 +293,88 @@ async def get_clip(filename: str):
         clip_path,
         media_type="video/mp4",
         filename=filename,
+        headers={
+            "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+            "Accept-Ranges": "bytes",  # Enable partial content/seeking
+        },
     )
+
+
+@app.get("/api/share_cards/{subfolder}/{filename}")
+async def get_share_card(subfolder: str, filename: str):
+    """Serve a generated share card file (image or video)."""
+    # subfolder should be 'images' or 'videos'
+    if subfolder not in ["images", "videos", "keyframes"]:
+        raise HTTPException(status_code=400, detail="Invalid subfolder")
+
+    card_path = os.path.join(STORAGE_PATHS["share_cards"], subfolder, filename)
+
+    if not os.path.exists(card_path):
+        raise HTTPException(status_code=404, detail="Share card file not found")
+
+    media_type = "image/png" if subfolder in ["images", "keyframes"] else "video/mp4"
+    return FileResponse(
+        card_path,
+        media_type=media_type,
+        filename=filename,
+        headers={
+            "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+            "Accept-Ranges": "bytes",
+        },
+    )
+
+
+@app.post("/api/moments/create_from_agent")
+async def create_moment_from_agent(moment_data: dict):
+    """
+    Called by LiveKit agent when Gemini detects a moment.
+
+    Expected payload:
+    {
+        "timestamp": 15.0,
+        "description": "Dunk over defender",
+        "excitement_level": 9,
+        "source": "livekit_screenshare",
+        "session_id": "session_abc123"
+    }
+    """
+    import uuid
+    from models import MomentType, MomentScores, PostCopy, ClipRecipe
+
+    try:
+        # Create moment without clip (just metadata for now)
+        moment = MomentAnalysis(
+            moment_id=f"m_{uuid.uuid4().hex[:8]}",
+            source="livekit_screenshare",
+            session_id=moment_data.get("session_id", "unknown"),
+            t0=moment_data.get("timestamp", 0.0),
+            tr=moment_data.get("timestamp", 0.0),  # Same as t0 for live moments
+            moment_type=MomentType.OTHER,  # Default to OTHER for now
+            summary=moment_data.get("description", "Exciting moment detected"),
+            why_it_matters=["Detected live by Gemini"],
+            scores=MomentScores(
+                hype=moment_data.get("excitement_level", 8) * 10,
+                risk=0
+            ),
+            risk_notes=[],
+            clip_recipe=[],  # No clips for live moments yet
+            post_copy=PostCopy(
+                hype=moment_data.get("description", "Exciting moment!"),
+                neutral=moment_data.get("description", "Exciting moment."),
+                brand_safe=moment_data.get("description", "Exciting moment.")
+            ),
+            clip_url=None,
+            share_card_url=None,
+            approval_status="pending"
+        )
+
+        moments_store[moment.moment_id] = moment
+        print(f"✨ Live moment created: {moment.moment_id} - {moment.summary}")
+
+        return {"success": True, "moment_id": moment.moment_id, "moment": moment}
+    except Exception as e:
+        print(f"❌ Error creating moment from agent: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create moment: {str(e)}")
 
 
 if __name__ == "__main__":
