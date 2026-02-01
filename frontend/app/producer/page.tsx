@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MomentAnalysis } from "@/types/moments";
-import { api, getFullClipUrl } from "@/lib/api";
+import { api, getFullClipUrl } from "@/lib/vibecheck-api";
 import AudioWaveform from "@/components/AudioWaveform";
 
 type FilterType = "all" | "pending" | "approved";
@@ -17,16 +17,21 @@ export default function ProducerView() {
   const [filter, setFilter] = useState<FilterType>("all");
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const hasAutoSelectedRef = useRef(false);
 
   // Get the actual selected moment object from the ID
   const selectedMoment = moments.find(m => m.moment_id === selectedMomentId) || null;
 
   // Filter moments based on current filter
+  // Producer only sees "pending" moments - not ones already sent to exec
   const filteredMoments = moments.filter(m => {
+    // Never show moments already sent to exec or processed
+    if (m.approval_status === "sent_to_exec" || m.approval_status === "approved" || m.approval_status === "held") {
+      return false;
+    }
     if (filter === "all") return true;
     if (filter === "pending") return m.approval_status === "pending";
-    if (filter === "approved") return m.approval_status === "approved";
     return true;
   });
 
@@ -34,6 +39,7 @@ export default function ProducerView() {
     const fetchMoments = async () => {
       try {
         const data = await api.getMoments();
+        console.log("📊 Fetched moments:", data.length, data);
         setMoments(data);
 
         // Only auto-select first moment on the very first fetch
@@ -43,7 +49,7 @@ export default function ProducerView() {
         }
         setLoading(false);
       } catch (err) {
-        console.error("Failed to fetch moments:", err);
+        console.error("❌ Failed to fetch moments:", err);
         setLoading(false);
       }
     };
@@ -225,6 +231,11 @@ export default function ProducerView() {
                 <div className="flex items-center gap-2 text-primary mb-1">
                   <span className="text-lg">⚡</span>
                   <span className="text-xs font-black tracking-widest uppercase">Detection Active</span>
+                  {selectedMoment.source === "livekit_screenshare" && (
+                    <span className="ml-2 px-2 py-1 bg-red-500 text-white text-[10px] font-black tracking-widest rounded animate-pulse">
+                      🔴 LIVE
+                    </span>
+                  )}
                 </div>
                 <h2 className="text-white text-3xl font-black tracking-tighter uppercase italic">
                   {selectedMoment.moment_type}: {selectedMoment.summary}
@@ -316,6 +327,29 @@ export default function ProducerView() {
                   </div>
                 </div>
 
+                {/* Share Card Preview */}
+                {selectedMoment.share_card_url && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-white text-xs font-black tracking-widest uppercase">Share Card</h3>
+                      <a
+                        href={getFullClipUrl(selectedMoment.share_card_url)}
+                        download={`${selectedMoment.moment_id}_share_card.png`}
+                        className="flex items-center gap-1 text-[10px] font-bold text-accent-gold hover:text-white transition-colors"
+                      >
+                        📥 DOWNLOAD
+                      </a>
+                    </div>
+                    <div className="relative rounded-lg overflow-hidden border border-border-subtle">
+                      <img
+                        src={getFullClipUrl(selectedMoment.share_card_url)}
+                        alt="Share card preview"
+                        className="w-full h-auto"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Tactical Buttons */}
                 <div className="flex gap-3 pt-4 border-t border-border-subtle">
                   <button
@@ -325,10 +359,35 @@ export default function ProducerView() {
                     ✏️ OVERRIDE CLIP
                   </button>
                   <button
-                    onClick={() => router.push("/exec")}
-                    className="flex-1 flex items-center justify-center gap-2 h-12 bg-primary rounded-lg text-[11px] font-black tracking-widest text-white shadow-lg shadow-primary/30 hover:bg-red-700 transition-all"
+                    onClick={async () => {
+                      console.log("🔴 SEND TO EXEC clicked", { selectedMoment, isSending });
+                      if (!selectedMoment || isSending) {
+                        console.log("🔴 Early return - selectedMoment:", selectedMoment, "isSending:", isSending);
+                        return;
+                      }
+                      setIsSending(true);
+                      try {
+                        console.log("🔴 Calling fetch directly for:", selectedMoment.moment_id);
+                        const baseUrl = `http://${window.location.hostname}:8000`;
+                        const response = await fetch(`${baseUrl}/api/moments/${selectedMoment.moment_id}/send_to_exec`, {
+                          method: "POST",
+                        });
+                        if (!response.ok) {
+                          throw new Error(`Failed to send to exec: ${response.statusText}`);
+                        }
+                        console.log(`📤 Sent moment ${selectedMoment.moment_id} to exec`);
+                        // Clear selection since moment will disappear from list
+                        setSelectedMomentId(null);
+                      } catch (err) {
+                        console.error("Failed to send to exec:", err);
+                      } finally {
+                        setIsSending(false);
+                      }
+                    }}
+                    disabled={isSending}
+                    className="flex-1 flex items-center justify-center gap-2 h-12 bg-primary rounded-lg text-[11px] font-black tracking-widest text-white shadow-lg shadow-primary/30 hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    → SEND TO EXEC
+                    {isSending ? "SENDING..." : "→ SEND TO EXEC"}
                   </button>
                 </div>
               </div>
@@ -362,9 +421,8 @@ export default function ProducerView() {
             </div>
           ) : (
             <div className="flex flex-col divide-y divide-border-subtle">
-              {filteredMoments.map((moment, index) => {
+              {filteredMoments.map((moment) => {
                 const isSelected = selectedMoment?.moment_id === moment.moment_id;
-                const isCurrent = index === 0;
 
                 return (
                   <div
@@ -373,15 +431,22 @@ export default function ProducerView() {
                     className={`p-4 cursor-pointer transition-colors ${
                       isSelected
                         ? "bg-primary/5 border-l-4 border-primary"
-                        : "hover:bg-white/5 border-l-4 border-transparent"
-                    } ${!isCurrent && "opacity-60"}`}
+                        : "hover:bg-white/5 border-l-4 border-transparent opacity-60"
+                    }`}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <span className={`text-[10px] font-black tracking-widest uppercase ${
-                        isCurrent ? "text-primary" : "text-text-muted"
-                      }`}>
-                        {isCurrent ? "Current Focus" : "Detected"}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-black tracking-widest uppercase ${
+                          isSelected ? "text-primary" : "text-text-muted"
+                        }`}>
+                          {isSelected ? "Current Focus" : "Detected"}
+                        </span>
+                        {moment.source === "livekit_screenshare" && (
+                          <span className="px-1.5 py-0.5 bg-red-500 text-white text-[8px] font-black tracking-widest rounded">
+                            LIVE
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] font-mono text-text-muted">
                         {getTimeAgo(moment.t0)}
                       </span>
@@ -448,7 +513,7 @@ export default function ProducerView() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-black text-text-muted tracking-widest uppercase">
-              Lat: {(Math.random() * 2).toFixed(1)}s
+              Lat: 0.8s
             </span>
           </div>
         </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { MomentAnalysis } from "@/types/moments";
-import { api, getFullClipUrl } from "@/lib/api";
+import { api, getFullClipUrl } from "@/lib/vibecheck-api";
 
 export default function SocialView() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function SocialView() {
       try {
         const allData = await api.getMoments();
         const approved = allData.filter((m) => m.approval_status === "approved");
-        const pending = allData.filter((m) => m.approval_status === "pending");
+        const pending = allData.filter((m) => m.approval_status === "sent_to_exec");
 
         setMoments(approved);
         setPendingCount(pending.length);
@@ -167,20 +167,16 @@ export default function SocialView() {
                   className="bg-panel-dark border border-white/10 rounded-xl p-4 flex flex-col md:flex-row gap-6 hover:bg-white/[0.02] transition-colors border-l-4 border-l-primary"
                 >
                   {/* Video Preview */}
-                  <div className="w-full md:w-64 aspect-video bg-center bg-cover rounded-lg relative flex-shrink-0 overflow-hidden">
+                  <div className="w-full md:w-64 aspect-video bg-center bg-cover rounded-lg relative flex-shrink-0 overflow-hidden bg-black">
                     {moment.clip_url ? (
                       <>
                         <video
                           className="w-full h-full object-cover"
                           src={getFullClipUrl(moment.clip_url)}
-                          poster={getFullClipUrl(moment.clip_url)}
+                          controls
+                          preload="metadata"
                         />
-                        <div className="absolute inset-0 bg-black/20 hover:bg-transparent transition-colors cursor-pointer flex items-center justify-center group">
-                          <span className="text-white text-4xl group-hover:scale-110 transition-transform">
-                            ▶
-                          </span>
-                        </div>
-                        <div className="absolute bottom-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] font-mono">
+                        <div className="absolute bottom-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] font-mono pointer-events-none">
                           {Math.floor(moment.tr - moment.t0)}s
                         </div>
                       </>

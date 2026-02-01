@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { MomentAnalysis } from "@/types/moments";
-import { api, getFullClipUrl } from "@/lib/api";
+import { api, getFullClipUrl } from "@/lib/vibecheck-api";
 
 export default function ExecView() {
   const router = useRouter();
@@ -16,7 +16,9 @@ export default function ExecView() {
     const fetchMoments = async () => {
       try {
         const data = await api.getMoments();
-        setMoments(data);
+        // Exec only sees moments that producer has sent for review
+        const pendingForExec = data.filter(m => m.approval_status === "sent_to_exec");
+        setMoments(pendingForExec);
         setLoading(false);
       } catch (err) {
         console.error("Failed to fetch moments:", err);
@@ -43,9 +45,12 @@ export default function ExecView() {
         at: Date.now() / 1000,
       });
 
-      // Move to next moment
-      if (currentIndex < moments.length - 1) {
-        setCurrentIndex(currentIndex + 1);
+      // Remove from local list immediately (will be filtered out on next fetch anyway)
+      const newMoments = moments.filter(m => m.moment_id !== currentMoment.moment_id);
+      setMoments(newMoments);
+      // Reset index if we're past the end
+      if (currentIndex >= newMoments.length && newMoments.length > 0) {
+        setCurrentIndex(newMoments.length - 1);
       }
     } catch (error) {
       console.error("Failed to approve:", error);
@@ -66,9 +71,12 @@ export default function ExecView() {
         at: Date.now() / 1000,
       });
 
-      // Move to next moment
-      if (currentIndex < moments.length - 1) {
-        setCurrentIndex(currentIndex + 1);
+      // Remove from local list immediately
+      const newMoments = moments.filter(m => m.moment_id !== currentMoment.moment_id);
+      setMoments(newMoments);
+      // Reset index if we're past the end
+      if (currentIndex >= newMoments.length && newMoments.length > 0) {
+        setCurrentIndex(newMoments.length - 1);
       }
     } catch (error) {
       console.error("Failed to hold:", error);

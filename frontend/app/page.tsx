@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api } from "@/lib/vibecheck-api";
+import ScreenShare from "@/components/ScreenShare";
 
 type UploadState = "idle" | "uploading" | "processing" | "ready" | "error";
 
@@ -41,6 +42,8 @@ export default function Home() {
   }, []);
 
   const handleFile = async (file: File) => {
+    console.log("🎬 handleFile called with:", file.name, file.type, file.size);
+
     // Validate file type
     if (!file.type.startsWith("video/")) {
       setErrorMessage("Please upload a video file");
@@ -61,6 +64,8 @@ export default function Home() {
     setUploadProgress(0);
 
     try {
+      console.log("🚀 Starting upload...");
+
       // Simulate upload progress (actual upload happens instantly for small files)
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
@@ -72,8 +77,10 @@ export default function Home() {
         });
       }, 200);
 
+      console.log("📤 Calling api.uploadVideo...");
       // Upload file to backend storage
       const uploadResult = await api.uploadVideo(file);
+      console.log("✅ Upload result:", uploadResult);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -81,16 +88,16 @@ export default function Home() {
 
       // Start processing
       setUploadState("processing");
+      console.log("🎬 Starting ingestion...");
 
       // Start video ingestion
       await api.startIngestion(uploadResult.video_path, "upload_stream");
-
-      // Wait a bit for processing to start
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log("✅ Ingestion started");
 
       setUploadState("ready");
+      console.log("✅ Upload complete!");
     } catch (error) {
-      console.error("Upload failed:", error);
+      console.error("❌ Upload failed:", error);
       setErrorMessage(error instanceof Error ? error.message : "Upload failed");
       setUploadState("error");
     }
@@ -206,6 +213,16 @@ export default function Home() {
                   )}
                 </div>
               </div>
+
+              {/* OR Divider */}
+              <div className="flex items-center gap-4 my-12">
+                <div className="flex-1 h-px bg-border-subtle"></div>
+                <span className="text-text-muted text-sm font-bold tracking-widest uppercase">OR</span>
+                <div className="flex-1 h-px bg-border-subtle"></div>
+              </div>
+
+              {/* Screen Share Option */}
+              <ScreenShare onComplete={() => navigateTo("/producer")} />
 
               {/* Feature Overview */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
