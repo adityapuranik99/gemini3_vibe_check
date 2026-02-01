@@ -12,6 +12,7 @@ from pathlib import Path
 import base64
 
 from models import MomentAnalysis, MomentType
+from player_image_service import PlayerImageService
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,9 @@ class ShareCardGenerator:
         (self.output_dir / "images").mkdir(exist_ok=True)
         (self.output_dir / "cutouts").mkdir(exist_ok=True)
 
+        # Initialize player image service
+        self.player_service = PlayerImageService()
+
         logger.info(f"📸 Share card generator initialized (Nano Banana Pro)")
 
     async def generate_static_card(
@@ -74,9 +78,23 @@ class ShareCardGenerator:
             return await self._generate_text_only_card(moment, theme_name)
 
         try:
-            # Step 1: Remove background from keyframe to get subject cutout
-            logger.info("✂️ Removing background from keyframe...")
-            cutout_url = await self._remove_background(keyframe_path)
+            # Step 0.5: Try to get official player photo if we have player info
+            reference_image_path = keyframe_path
+            if moment.player_info and moment.player_info.name:
+                logger.info(f"🔍 Fetching official photo for {moment.player_info.name}...")
+                player_photo = await self.player_service.get_player_photo(
+                    moment.player_info.name,
+                    moment.player_info.team
+                )
+                if player_photo:
+                    logger.info(f"✅ Using official player photo instead of keyframe")
+                    reference_image_path = player_photo
+                else:
+                    logger.info(f"⚠️ No player photo found, using keyframe")
+
+            # Step 1: Remove background from reference image to get subject cutout
+            logger.info("✂️ Removing background from reference image...")
+            cutout_url = await self._remove_background(reference_image_path)
 
             # Step 2: Generate stylized share card with Nano Banana Pro
             logger.info("🎨 Generating share card with Nano Banana Pro...")
@@ -135,10 +153,21 @@ class ShareCardGenerator:
         # Build a prompt that describes the desired share card
         moment_type = moment.moment_type.value if hasattr(moment.moment_type, 'value') else str(moment.moment_type)
 
+        # Add player-specific context if available
+        player_context = ""
+        if moment.player_info and moment.player_info.name:
+            player_context = f"""
+The athlete in the reference image is {moment.player_info.name} from {moment.player_info.team}.
+The person should be recognizable as {moment.player_info.name}.
+"""
+
         prompt = f"""Create a professional sports social media share card (1200x630 pixels).
 
 The image should feature the person from the reference image prominently in the center-right.
+{player_context}
 Style: {theme['prompt_style']}
+
+Action context: {moment.summary}
 
 Include stylized text overlays:
 - "🔥 {moment.scores.hype}% HYPE" in large bold text at top-left

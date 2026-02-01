@@ -17,6 +17,22 @@ export interface ClipRecipe {
   end_s: number;
 }
 
+export interface PlayerInfo {
+  name?: string;
+  team?: string;
+  jersey_number?: string;
+  position?: string;
+}
+
+export interface MatchStats {
+  teams: string[];
+  score?: string;
+  quarter_period?: string;
+  game_date?: string;
+  venue?: string;
+  key_stats: string[];
+}
+
 export interface MomentAnalysis {
   type: "moment.ready";
   moment_id: string;
@@ -41,6 +57,8 @@ export interface MomentAnalysis {
   approval_status?: "pending" | "sent_to_exec" | "approved" | "held";
   source?: "upload" | "livekit_screenshare"; // Source of the moment
   session_id?: string; // LiveKit session ID if from screen share
+  player_info?: PlayerInfo; // Player identification from visual analysis
+  match_stats?: MatchStats; // Match statistics from search grounding
 }
 
 export interface ApprovalEvent {

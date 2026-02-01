@@ -41,6 +41,24 @@ class PostCopy(BaseModel):
     brand_safe: str = Field(..., description="Brand-safe copy variant")
 
 
+class PlayerInfo(BaseModel):
+    """Information about a player identified in the moment."""
+    name: str | None = None
+    team: str | None = None
+    jersey_number: str | None = None
+    position: str | None = None
+
+
+class MatchStats(BaseModel):
+    """Match statistics and context gathered via search grounding."""
+    teams: List[str] = Field(default_factory=list, description="List of teams playing, e.g. ['49ers', 'Chiefs']")
+    score: str | None = None  # e.g., "24-21"
+    quarter_period: str | None = None
+    game_date: str | None = None
+    venue: str | None = None
+    key_stats: List[str] = Field(default_factory=list, description="Key statistics, e.g. ['Mahomes: 287 yds, 3 TD']")
+
+
 class MomentScores(BaseModel):
     hype: int = Field(..., ge=0, le=100, description="Hype score 0-100")
     risk: int = Field(..., ge=0, le=100, description="Risk score 0-100")
@@ -63,6 +81,8 @@ class MomentAnalysis(BaseModel):
     approval_status: Literal["pending", "sent_to_exec", "approved", "held"] = "pending"
     source: Literal["upload", "livekit_screenshare"] = "upload"  # NEW: Source of the moment
     session_id: str | None = None  # NEW: LiveKit session ID if from screen share
+    player_info: PlayerInfo | None = None  # NEW: Player identification from visual analysis
+    match_stats: MatchStats | None = None  # NEW: Match statistics from search grounding
 
 
 class ApprovalEvent(BaseModel):

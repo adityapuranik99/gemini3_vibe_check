@@ -105,6 +105,87 @@ Based on this data, analyze the moment and provide your structured response.
 """
 
 
+PLAYER_IDENTIFICATION_PROMPT = """Analyze these keyframes from a sports broadcast and identify:
+
+1. **Jersey number** - What jersey number is visible on the key player?
+2. **Team identification** - What team colors, logos, or uniforms do you see?
+3. **Sport type** - What sport is being played?
+
+Respond with JSON in this format:
+```json
+{
+  "jersey_number": "string or null",
+  "team_colors": ["color1", "color2"],
+  "team_logo": "description of logo if visible",
+  "sport": "basketball|football|soccer|tennis|hockey|baseball|other"
+}
+```
+
+Focus on the most prominent player in the action. Be specific about jersey numbers and team identifiers.
+"""
+
+
+def build_player_identification_prompt() -> str:
+    """Build Phase 1 prompt for visual player identification."""
+    return PLAYER_IDENTIFICATION_PROMPT
+
+
+def build_search_grounding_prompt(visual_info: dict) -> str:
+    """
+    Build Phase 2 prompt for search-grounded player and match stats.
+
+    Args:
+        visual_info: Dict with jersey_number, team_colors, team_logo, sport
+
+    Returns:
+        Prompt string for search-grounded query
+    """
+    jersey = visual_info.get("jersey_number", "unknown")
+    team_logo = visual_info.get("team_logo", "unknown")
+    sport = visual_info.get("sport", "unknown")
+
+    return f"""Based on visual analysis of a {sport} broadcast showing:
+- Jersey number: {jersey}
+- Team identifier: {team_logo}
+
+Use Google Search to find:
+
+1. **Player identification**:
+   - Full name of the player wearing #{jersey}
+   - Their team name
+   - Their position
+
+2. **Match context** (if this is from a recent/current game):
+   - What teams are playing?
+   - Current or final score
+   - What quarter/period/inning?
+   - Game date and venue
+   - Any key statistics or highlights
+
+Respond with JSON:
+```json
+{{
+  "player_info": {{
+    "name": "Player Full Name",
+    "team": "Team Name",
+    "jersey_number": "{jersey}",
+    "position": "Position"
+  }},
+  "match_stats": {{
+    "teams": ["Team A", "Team B"],
+    "score": "score if available",
+    "quarter_period": "quarter/period/inning",
+    "game_date": "date if available",
+    "venue": "venue if available",
+    "key_stats": ["stat 1", "stat 2"]
+  }}
+}}
+```
+
+If you cannot find specific information, use null for individual fields. Use Google Search to get the most current information.
+"""
+
+
 def get_example_moment_json() -> dict:
     """Get an example of the expected JSON structure for documentation."""
     return {

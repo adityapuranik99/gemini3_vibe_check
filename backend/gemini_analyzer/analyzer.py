@@ -7,9 +7,19 @@ import google.generativeai as genai
 from PIL import Image
 import io
 import numpy as np
+import json
 
-from models import MomentAnalysis, MomentType, MomentScores, PostCopy, ClipRecipe
-from .prompts import build_analysis_prompt
+from models import MomentAnalysis, MomentType, MomentScores, PostCopy, ClipRecipe, PlayerInfo, MatchStats
+from .prompts import build_analysis_prompt, build_player_identification_prompt, build_search_grounding_prompt
+
+# Try to import new google-genai SDK for search grounding
+try:
+    from google import genai as genai_new
+    from google.genai import types
+    HAS_SEARCH_GROUNDING = True
+except ImportError:
+    HAS_SEARCH_GROUNDING = False
+    logging.warning("google-genai SDK not available. Search grounding will be disabled.")
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +50,7 @@ class GeminiAnalyzer:
                 "GOOGLE_API_KEY not found. Set it in .env or pass as parameter."
             )
 
-        # Configure Gemini
+        # Configure Gemini (old SDK)
         genai.configure(api_key=self.api_key)
 
         # Initialize model with structured output schema
@@ -57,7 +67,123 @@ class GeminiAnalyzer:
             generation_config=generation_config,
         )
 
+        # Initialize new SDK client for search grounding if available
+        self.search_client = None
+        if HAS_SEARCH_GROUNDING:
+            try:
+                self.search_client = genai_new.Client(api_key=self.api_key)
+                logger.info("✅ Search grounding enabled via google-genai SDK")
+            except Exception as e:
+                logger.warning(f"Failed to initialize search client: {e}")
+                self.search_client = None
+
         logger.info(f"🤖 Gemini analyzer initialized with model: {model_name}")
+
+    def _extract_player_and_match_info(
+        self,
+        frames: list[tuple[float, np.ndarray]],
+        t0: float,
+        tr: float,
+    ) -> tuple[Optional[PlayerInfo], Optional[MatchStats]]:
+        """
+        Phase 1 & 2: Visual analysis + search grounding to identify player and match stats.
+
+        Returns:
+            Tuple of (PlayerInfo, MatchStats) or (None, None) if extraction fails
+        """
+        if not self.search_client:
+            logger.info("Search grounding not available, skipping player/match extraction")
+            return None, None
+
+        try:
+            # Phase 1: Visual analysis to identify player/team from keyframes
+            keyframes = self._select_keyframes(frames, t0, tr)
+            pil_images = [self._numpy_to_pil(frame) for _, frame in keyframes]
+
+            phase1_prompt = build_player_identification_prompt()
+
+            # Use old SDK for visual analysis (no search needed yet)
+            logger.info("🔍 Phase 1: Visual player identification...")
+            phase1_response = self.model.generate_content([phase1_prompt] + pil_images)
+            phase1_text = phase1_response.text
+
+            # Parse visual analysis
+            visual_info = self._parse_visual_identification(phase1_text)
+            if not visual_info:
+                logger.warning("Could not extract player info from visual analysis")
+                return None, None
+
+            # Phase 2: Search-grounded query for detailed stats
+            logger.info(f"🔍 Phase 2: Search grounding for player: {visual_info}")
+            phase2_prompt = build_search_grounding_prompt(visual_info)
+
+            # Use new SDK with search grounding
+            grounding_tool = types.Tool(google_search=types.GoogleSearch())
+            config = types.GenerateContentConfig(
+                tools=[grounding_tool],
+                response_mime_type="application/json",
+            )
+
+            phase2_response = self.search_client.models.generate_content(
+                model="gemini-3-flash-preview",
+                contents=phase2_prompt,
+                config=config,
+            )
+
+            # Parse search-grounded response
+            player_info, match_stats = self._parse_search_response(phase2_response.text)
+
+            logger.info(f"✅ Extracted player: {player_info.name if player_info else 'None'}")
+            return player_info, match_stats
+
+        except Exception as e:
+            logger.error(f"❌ Player/match extraction failed: {e}")
+            return None, None
+
+    def _parse_visual_identification(self, response_text: str) -> Optional[dict]:
+        """Parse Phase 1 visual identification response."""
+        try:
+            data = json.loads(response_text)
+            return {
+                "jersey_number": data.get("jersey_number"),
+                "team_colors": data.get("team_colors"),
+                "team_logo": data.get("team_logo"),
+                "sport": data.get("sport"),
+            }
+        except Exception as e:
+            logger.error(f"Failed to parse visual identification: {e}")
+            return None
+
+    def _parse_search_response(self, response_text: str) -> tuple[Optional[PlayerInfo], Optional[MatchStats]]:
+        """Parse Phase 2 search-grounded response."""
+        try:
+            data = json.loads(response_text)
+
+            # Extract player info
+            player_data = data.get("player_info", {})
+            player_info = PlayerInfo(
+                name=player_data.get("name"),
+                team=player_data.get("team"),
+                jersey_number=player_data.get("jersey_number"),
+                position=player_data.get("position"),
+            ) if player_data.get("name") else None
+
+            # Extract match stats
+            match_data = data.get("match_stats", {})
+            match_stats = MatchStats(
+                teams=match_data.get("teams", []),
+                score=match_data.get("score"),
+                quarter_period=match_data.get("quarter_period"),
+                game_date=match_data.get("game_date"),
+                venue=match_data.get("venue"),
+                key_stats=match_data.get("key_stats", []),
+            ) if match_data.get("teams") else None
+
+            return player_info, match_stats
+
+        except Exception as e:
+            logger.error(f"Failed to parse search response: {e}")
+            return None, None
 
     def analyze_moment(
         self,
@@ -86,6 +212,9 @@ class GeminiAnalyzer:
         """
         logger.info(f"🔍 Analyzing moment {candidate_id} (t0={t0:.2f}s, tr={tr:.2f}s)")
 
+        # Extract player and match info first (if search grounding available)
+        player_info, match_stats = self._extract_player_and_match_info(frames, t0, tr)
+
         # Build prompt
         prompt = build_analysis_prompt(
             candidate_id=candidate_id,
@@ -113,10 +242,18 @@ class GeminiAnalyzer:
             # Parse into MomentAnalysis
             moment = self._parse_response(result, candidate_id, t0, tr)
 
+            # Add player and match info
+            moment.player_info = player_info
+            moment.match_stats = match_stats
+
             logger.info(
                 f"✅ Moment analyzed: {moment.moment_type} "
                 f"(hype={moment.scores.hype}, risk={moment.scores.risk})"
             )
+            if player_info:
+                logger.info(f"   Player: {player_info.name} ({player_info.team})")
+            if match_stats:
+                logger.info(f"   Match: {' vs '.join(match_stats.teams)} - {match_stats.score}")
 
             return moment
 

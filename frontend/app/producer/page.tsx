@@ -327,6 +327,108 @@ export default function ProducerView() {
                   </div>
                 </div>
 
+                {/* Match Intel Panel */}
+                {(selectedMoment.player_info || selectedMoment.match_stats) && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-white text-xs font-black tracking-widest uppercase">Match Intel</h3>
+                      <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-black tracking-widest rounded">
+                        SEARCH GROUNDED
+                      </span>
+                    </div>
+
+                    <div className="bg-white/5 border border-border-subtle rounded-lg p-4 space-y-4">
+                      {/* Player Info */}
+                      {selectedMoment.player_info && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-accent-gold text-[10px] font-black tracking-widest">PLAYER</span>
+                            {selectedMoment.player_info.jersey_number && (
+                              <span className="px-1.5 py-0.5 bg-primary/20 text-primary text-[9px] font-black tracking-widest rounded">
+                                #{selectedMoment.player_info.jersey_number}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            {selectedMoment.player_info.name && (
+                              <div>
+                                <p className="text-text-muted text-[10px] font-bold">NAME</p>
+                                <p className="text-white font-semibold">{selectedMoment.player_info.name}</p>
+                              </div>
+                            )}
+                            {selectedMoment.player_info.team && (
+                              <div>
+                                <p className="text-text-muted text-[10px] font-bold">TEAM</p>
+                                <p className="text-white font-semibold">{selectedMoment.player_info.team}</p>
+                              </div>
+                            )}
+                            {selectedMoment.player_info.position && (
+                              <div>
+                                <p className="text-text-muted text-[10px] font-bold">POSITION</p>
+                                <p className="text-white font-semibold">{selectedMoment.player_info.position}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Match Stats */}
+                      {selectedMoment.match_stats && (
+                        <div className="space-y-2 pt-4 border-t border-border-subtle">
+                          <span className="text-accent-gold text-[10px] font-black tracking-widest">MATCH CONTEXT</span>
+
+                          {selectedMoment.match_stats.teams.length > 0 && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <p className="text-white font-semibold">{selectedMoment.match_stats.teams.join(" vs ")}</p>
+                              {selectedMoment.match_stats.score && (
+                                <span className="px-2 py-0.5 bg-white/10 text-white text-[10px] font-black rounded">
+                                  {selectedMoment.match_stats.score}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {selectedMoment.match_stats.quarter_period && (
+                              <div>
+                                <p className="text-text-muted text-[10px] font-bold">PERIOD</p>
+                                <p className="text-white">{selectedMoment.match_stats.quarter_period}</p>
+                              </div>
+                            )}
+                            {selectedMoment.match_stats.game_date && (
+                              <div>
+                                <p className="text-text-muted text-[10px] font-bold">DATE</p>
+                                <p className="text-white">{selectedMoment.match_stats.game_date}</p>
+                              </div>
+                            )}
+                            {selectedMoment.match_stats.venue && (
+                              <div className="col-span-2">
+                                <p className="text-text-muted text-[10px] font-bold">VENUE</p>
+                                <p className="text-white">{selectedMoment.match_stats.venue}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Key Stats */}
+                          {selectedMoment.match_stats.key_stats.length > 0 && (
+                            <div className="pt-2">
+                              <p className="text-text-muted text-[10px] font-bold mb-2">KEY STATS</p>
+                              <div className="space-y-1">
+                                {selectedMoment.match_stats.key_stats.map((stat, idx) => (
+                                  <div key={idx} className="flex items-center gap-2">
+                                    <span className="text-primary text-[10px]">▸</span>
+                                    <span className="text-white text-xs">{stat}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Share Card Preview */}
                 {selectedMoment.share_card_url && (
                   <div className="space-y-3">

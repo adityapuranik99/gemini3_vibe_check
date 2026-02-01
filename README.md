@@ -40,13 +40,14 @@ Visit `http://localhost:3003` to upload a video and start detecting moments!
 ## 🎨 Features
 
 - ✅ Two-stage detection (fast signals → Gemini analysis)
+- ✅ Gemini 3 Flash with search grounding for player/match identification
 - ✅ Reaction-first clip assembly
 - ✅ Three role-based views with SF 49ers tactical theme
 - ✅ Producer: Filter, review, copy post variants
 - ✅ Executive: One-at-a-time approval flow
 - ✅ Social: Publish approved moments with toast notifications
-- 🚧 LiveKit + Gemini Live voice agent (planned - see LIVEKIT_INTEGRATION_PLAN.md)
-- 🚧 Fal.ai share card generation (planned - see FAL_INTEGRATION_PLAN.md)
+- ✅ LiveKit screen share integration for producer view
+- 🚧 Fal.ai share card generation with player images (in progress)
 
 ## 📚 Tech Stack
 
